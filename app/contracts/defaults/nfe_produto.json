@@ -1,0 +1,18 @@
+{
+    "doc_type": "nfe_produto",
+    "version": "1.0",
+    "description": "Nota Fiscal Eletrônica de Produto (DANFE)",
+    "keywords": ["DANFE", "Nota Fiscal Eletrônica", "Chave de Acesso"],
+    "fields": [
+        {"name": "numero_nota", "type": "string", "description": "Número da Nota Fiscal", "required": true},
+        {"name": "serie", "type": "string", "description": "Série da Nota", "required": false},
+        {"name": "chave_acesso", "type": "string", "description": "Chave de acesso de 44 dígitos", "required": true},
+        {"name": "data_emissao", "type": "date", "description": "Data de emissão da nota", "required": true},
+        {"name": "valor_total", "type": "float", "description": "Valor total da nota", "required": true},
+        {"name": "emitente_nome", "type": "string", "description": "Razão social do emitente", "required": true},
+        {"name": "emitente_cnpj", "type": "string", "description": "CNPJ do emitente", "required": true},
+        {"name": "destinatario_nome", "type": "string", "description": "Razão social do destinatário", "required": true},
+        {"name": "destinatario_cnpj", "type": "string", "description": "CNPJ do destinatário", "required": true}
+    ],
+    "system_prompt": "Você é um assistente especializado em extração de dados de Documentos Fiscais Brasileiros. Extraia os dados da Nota Fiscal (DANFE) fornecida no formato JSON estrito conforme o schema. Normalize valores monetários para float (ex: 1000.00) e datas para YYYY-MM-DD."
+}

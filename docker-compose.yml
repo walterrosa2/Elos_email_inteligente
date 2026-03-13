@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    # image: ghcr.io/walterrosa2/elos_email_inteligente:latest
+    container_name: elos_app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./dados:/app/dados
+      - ./.env:/app/.env
+    restart: unless-stopped

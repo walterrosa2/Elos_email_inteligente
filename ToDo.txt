@@ -1,0 +1,46 @@
+- No dahboard ao selecionar um registro e ir em detalhes, não esta visualizando o arquivo pdf na tela, ou memos o TXT ou XML. Entao faça o ajuste para que seja possível visualizar.
+- No menu relatórios precisa gerar o arquivo excell porém de acordo com a estrutura do schema (contrato) previamente cadastrado no menu Gestão de Contratos. Cada tipo de documento terá uma aba diferente no excell.
+- Antes de enviar textract AWS precisa confirmar ser arquivo pdf
+- Precisamos certificar que arquivos que não fazem parte da lista de Extensões Permitidas (separadas por vírgula) não sejam baixados dos emails
+- após execução da classificação e extração dos dados conforme contrato pelos agentes de IA, precisamos marcar como concluído o registro
+
+- quando os arquivos baixados dos emails forem das extensões .xlsx, .csv, .xml, .txt, .xls, .zip, .rar será necessário pular a etapa de envio ao textract AWS. E inserir no prompt de envio a informação do tipo de arquivos enviados facilitando a identificação
+- Quando o agente de ia retornar baixo nível de confiança temos de ter a possibilidade de selecionar vários registros na tela dashboard e assim aprovar manualmente a extração realizada. Preciso entender melhor como esta sendo feito essa classificação do status, e também como o agente esta tratando quando nível de confiança é baixo (ex. ele faz a extração conforme contrato assim mesmo?)
+- Revisar os status conforme abaixo:
+Colocar o status em português e não ingles.
+Colocar os status explicativos no front de forma a ajudar o usuário a entender cada status
+🟢 1. Status de Início
+QUEUED -> FILA (Na Fila): Colocar explicação - E-mails com anexos pendentes de download
+STAGED -> ARMAZENADO (Armazenado): Armazenado e pendente extração dos dados.
+🟡 2. Status de Processamento (Automático)
+TEXT_EXTRACTED -> EXTRAIDO - Extração de dados concluida 
+Se for PDF: Passou pelo AWS Textract.
+Se for TXT/XML: O sistema leu o texto diretamente.
+
+CLASSIFIED -> CLASSIFICADO (Classificado): Anexo classificado com tipo de documento
+EXTRACTED -> TABULADOS (Dados Extraídos): Anexos com dados extraídos e tabulados.
+🔵 3. Status de Validação e Conclusão
+VALIDATED -> CONFIAVEL (Validado): Precisamos ajustar essa regra e deixar 90% de confiança ser validado
+APPROVED (Aprovado / Concluído): Este é o objetivo final!
+Significa que o documento foi processado, os dados foram extraídos, validados e a IA tem alta confiança (ou você aprovou manualmente). O registro está pronto para gerar relatórios.
+🔴 4. Status de Atenção
+REVIEW_PENDING (Revisão Pendente): O sistema processou, mas encontrou algo estranho.
+Pode ser: Confiança baixa da IA, um tipo de arquivo desconhecido (ex: imagem sem texto claro) ou uma regra de validação que falhou.
+Ação necessária: Você precisa entrar no Dashboard, clicar no registro e corrigir/aprovar manualmente.
+FAILED (Falha): Ocorreu um erro técnico (ex: arquivo corrompido, erro de conexão com a AWS). O sistema tentou, mas não conseguiu processar.
+
+- Sim, precisamos trazer o texto do corpo do email e assim viabilizar o seguinte:
+Criar um menu "Analise Email" em que nele teremos algumas informações como - corpo do email (texto), retorno da IA agente analise criticidade email <agente_analise_email>,parâmetro criticidade conforme retorno do <agente_analise_email>
+<agente_analise_email>
+- precisamos criar um agente (prompt separado), somente para analisar o corpo do email e detectar emails críticos/urgentes para alertar a equipe a priorizar o mesmo e assim dar a devida tratativa
+- esse agente precisará interpretar semanticamente o conteúdo e fazer uma analise de tom da conversa destacando tons agressivos, nervosos, etc e assim alertar para tratativa
+- com base no nível de criticidade retornar o parâmetro criticidade, que será usado pelo usuário para filtrar o conteúdo
+</agente_analise_email>
+Nesse mesmo menu devemos ter a opção de visitar os anexos do email e também ler os detalhes dos dados tabulados similar ao que temos nos detalhes da tela dashboard.
+As informações de criticidade, corpo do email, analise do agente precisam também sair no relatório final menu Relatórios assim o usuário poderá selecionar no excell os arquivos/emails que precisa priorizar
+
+
+
+
+
+- 

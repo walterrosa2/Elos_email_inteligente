@@ -1,0 +1,51 @@
+{
+    "doc_type": "boleto_bancario",
+    "version": "1.0",
+    "description": "Boleto Bancário de Pagamento",
+    "keywords": [
+        "Boleto",
+        "Nosso Número",
+        "Linha Digitável",
+        "Cedente",
+        "Sacado"
+    ],
+    "fields": [
+        {
+            "name": "codigo_barras",
+            "type": "string",
+            "description": "Código de barras ou linha digitável",
+            "required": true
+        },
+        {
+            "name": "beneficiario_nome",
+            "type": "string",
+            "description": "Nome do Beneficiário/Cedente",
+            "required": true
+        },
+        {
+            "name": "beneficiario_doc",
+            "type": "string",
+            "description": "CPF/CNPJ do Beneficiário",
+            "required": true
+        },
+        {
+            "name": "pagador_nome",
+            "type": "string",
+            "description": "Nome do Pagador/Sacado",
+            "required": true
+        },
+        {
+            "name": "data_vencimento",
+            "type": "date",
+            "description": "Data de Vencimento",
+            "required": true
+        },
+        {
+            "name": "valor_documento",
+            "type": "float",
+            "description": "Valor do Documento",
+            "required": true
+        }
+    ],
+    "system_prompt": "Extraia os dados do Boleto Bancário fornecido. Retorne JSON estrito. Atenção para a linha digitável e data de vencimento."
+}

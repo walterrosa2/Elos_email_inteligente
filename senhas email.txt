@@ -1,0 +1,11 @@
+ID de aplicação (cliente):43f611d4-81ac-470a-9023-11bbfa9051f0
+
+ID do diretório (inquilino):80ff4126-452e-40bf-9e85-37cac9176c74
+
+
+Valor: 4U_8Q~erLO~ACivPzTjv3HTiz2zmyplG93~Jybhm
+
+ID Secreto: 85bf1e8d-407a-4ff2-a17e-c1efd42960e7
+
+
+

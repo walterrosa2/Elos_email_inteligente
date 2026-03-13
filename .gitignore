@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs and databases
+logs/
+*.log
+dados/*
+!dados/app_v2.db
+!dados/storage/
+dados/storage/*
+!dados/storage/.gitkeep
+
+# Ignore DB itself if you don't want itversioned, but we kept it for seeding
+# actually, let's not version app_v2.db, just seeding scripts
+app*.db
+dados/app*.db
+
+# Streamlit
+.streamlit/
+! .streamlit/config.toml
+
+# pytest
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# IDE
+.vscode/
+.idea/
