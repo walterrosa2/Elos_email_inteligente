@@ -15,3 +15,4 @@ docker-compose.yml
 scripts/
 tests/
 # Permitir apenas o que for essencial se necessário, mas por enquanto ignorar docs.
+frontend/node_modules/
