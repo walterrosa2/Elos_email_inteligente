@@ -57,12 +57,15 @@ class TextractService:
             if total_pages <= 1:
                 return self._process_sync(file_bytes, job_id=job_id, filename=filename)
 
-            logger.info(f"Processing multipage PDF ({total_pages} pages) for {filename}")
+            # Limitar a 5 páginas para evitar custos desnecessários com Textract
+            pages_to_process = min(total_pages, 5)
+
+            logger.info(f"Processing multipage PDF (first {pages_to_process} of {total_pages} pages) for {filename}")
             
             combined_text = []
             combined_blocks = []
             
-            for i in range(total_pages):
+            for i in range(pages_to_process):
                 logger.info(f"Processing page {i+1}/{total_pages} of {filename}...")
                 
                 # Create a 1-page PDF
