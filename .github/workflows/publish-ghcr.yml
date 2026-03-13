@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: walterrosa2/elos_email_inteligente
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
