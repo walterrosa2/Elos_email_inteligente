@@ -1,4 +1,14 @@
-# Build Python Backend
+# Stage 1: Build Frontend
+FROM node:18-alpine AS frontend-builder
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN npm install
+
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Build Python Backend
 FROM python:3.11-slim
 
 # Install system dependencies
@@ -17,8 +27,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code (including frontend/dist)
+# Copia o código base
 COPY . .
+
+# Copia os assets do frontend buildados no Stage 1 (a mágica acontece aqui)
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 # Mark startup script executable
 RUN chmod +x _start.sh
