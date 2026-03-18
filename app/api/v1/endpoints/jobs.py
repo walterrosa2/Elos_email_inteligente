@@ -64,13 +64,16 @@ def list_jobs(
             query = query.filter(Job.status.in_(["EXTRACTED", "VALIDATED", "COMPLETED", "APPROVED", "REVIEW_PENDING", "EXPORTED"]))
             query = query.filter(Job.doc_type.isnot(None), Job.doc_type != "UNKNOWN", Job.doc_type != "unknown")
         elif status_filter == "Não mapeado":
-            # Sem contrato ou marcado explicitamente como UNKNOWN
+            # Sem contrato ou marcado explicitamente como UNKNOWN, mas já processou
+            query = query.filter(Job.status.not_in(["STAGED", "TEXT_EXTRACTED", "CLASSIFYING", "EXTRACTING"]))
             query = query.filter(or_(
                 Job.status == "UNKNOWN_DOC_TYPE", 
                 Job.doc_type == "UNKNOWN", 
                 Job.doc_type == "unknown",
                 Job.doc_type.is_(None)
             ))
+        elif status_filter == "Pendente":
+            query = query.filter(Job.status.in_(["STAGED", "TEXT_EXTRACTED", "CLASSIFYING", "EXTRACTING"]))
         elif status_filter == "Erro":
             query = query.filter(Job.status.in_(["ERROR", "FAILED"]))
         else:
@@ -102,9 +105,10 @@ def list_jobs(
     # Modelagem para a view simplificada
     job_summaries = []
     for j, crit in jobs_data:
-        # Simplificando o status pro front-end (Elos Profile)
         if j.status in ["ERROR", "FAILED"]:
             sim_status = "Erro"
+        elif j.status in ["STAGED", "TEXT_EXTRACTED", "CLASSIFYING", "EXTRACTING"]:
+            sim_status = "Pendente"
         elif j.status == "UNKNOWN_DOC_TYPE" or j.doc_type in ["UNKNOWN", "unknown", None]:
             sim_status = "Não mapeado"
         else:
@@ -237,11 +241,26 @@ def reprocess_job(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
+    logger.info(f"Reprocess Job {job_id}: textract_result type is {type(job.textract_result)}")
+    if isinstance(job.textract_result, dict):
+        logger.info(f"Reprocess Job {job_id}: keys are {job.textract_result.keys()}")
+
     # Somente prossegue se tiver o textract executado (idealmente, "TEXT_EXTRACTED" ou falhou classificação depois)
-    if not job.textract_result or "text" not in job.textract_result:
+    tr = job.textract_result
+    if not tr:
+        raise HTTPException(status_code=400, detail="Texto não extraído pelo Textract. Impossível reprocessar sem o OCR original.")
+    
+    if isinstance(tr, str):
+        import json
+        try:
+            tr = json.loads(tr)
+        except Exception:
+            pass
+
+    if isinstance(tr, dict) and "text" not in tr:
         raise HTTPException(status_code=400, detail="Texto não extraído pelo Textract. Impossível reprocessar sem o OCR original.")
 
-    text = job.textract_result.get("text", "")
+    text = tr.get("text", "") if isinstance(tr, dict) else str(tr)
     fname = job.attachment_name or ""
     
     # 1. Classification

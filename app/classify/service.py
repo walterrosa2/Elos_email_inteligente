@@ -73,7 +73,8 @@ Document Text (truncated):
 
             result = json.loads(content)
             
-            return result.get("doc_type", "unknown"), result.get("confidence", 0.0), result.get("reasoning", "")
+            doc_type = result.get("doc_type") or result.get("document_type", "unknown")
+            return doc_type, result.get("confidence", 0.0), result.get("reasoning", "")
 
         except Exception as e:
             logger.error(f"Classification failed: {e}")

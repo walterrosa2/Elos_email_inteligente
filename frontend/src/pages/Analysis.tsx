@@ -26,6 +26,7 @@ interface JobSummary {
   subject: string;
   attachment_name: string;
   received_at: string;
+  doc_type: string | null;
   criticality: string | null;
 }
 
@@ -201,6 +202,14 @@ export function Analysis() {
     setEditedExtraction(prev => ({ ...prev, [key]: value }));
   };
 
+  const pendingStatuses = ["STAGED", "TEXT_EXTRACTED", "CLASSIFYING", "EXTRACTING"];
+
+  const isNaoMapeado = jobDetail && 
+    jobDetail.status !== "ERROR" && 
+    jobDetail.status !== "FAILED" && 
+    !pendingStatuses.includes(jobDetail.status) &&
+    (jobDetail.status === "UNKNOWN_DOC_TYPE" || !jobDetail.doc_type || jobDetail.doc_type.toLowerCase() === "unknown");
+
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-50">
       {/* LEFT PANEL: Job List (Outlook Style) */}
@@ -316,6 +325,7 @@ export function Analysis() {
                     <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                       job.simplified_status === 'Concluído' ? 'bg-emerald-100 text-emerald-700' :
                       job.simplified_status === 'Não mapeado' ? 'bg-amber-100 text-amber-700' :
+                      job.simplified_status === 'Pendente' ? 'bg-blue-100 text-blue-700' :
                       'bg-rose-100 text-rose-700'
                     }`}>
                       {job.simplified_status}
@@ -383,7 +393,7 @@ export function Analysis() {
                 </div>
                 
                 <div className="flex gap-2">
-                  {jobDetail?.simplified_status === "Não mapeado" && (
+                  {isNaoMapeado && (
                     <button 
                       onClick={handleReprocess}
                       disabled={reprocessMutation.isPending}
