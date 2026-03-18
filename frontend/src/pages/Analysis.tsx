@@ -14,7 +14,8 @@ import {
   Eye,
   Database,
   Type,
-  Filter
+  Filter,
+  RefreshCcw
 } from 'lucide-react';
 
 interface JobSummary {
@@ -124,6 +125,27 @@ export function Analysis() {
       alert('Extração atualizada com sucesso!');
     }
   });
+
+  // Reprocess Mutation
+  const reprocessMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/api/v1/jobs/${selectedJobId}/reprocess`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-detail', selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      alert('E-mail reprocessado com sucesso!');
+    },
+    onError: (err: any) => {
+      alert(`Erro ao reprocessar: ${err?.response?.data?.detail || err.message}`);
+    }
+  });
+
+  const handleReprocess = () => {
+    if (confirm('Deseja realmente reprocessar este e-mail pela Inteligência Artificial?')) {
+      reprocessMutation.mutate();
+    }
+  };
 
   // Load PDF Blob when job changes
   useEffect(() => {
@@ -361,6 +383,16 @@ export function Analysis() {
                 </div>
                 
                 <div className="flex gap-2">
+                  {jobDetail?.simplified_status === "Não mapeado" && (
+                    <button 
+                      onClick={handleReprocess}
+                      disabled={reprocessMutation.isPending}
+                      className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl font-medium transition-all shadow-lg shadow-amber-200 disabled:opacity-50"
+                    >
+                      <RefreshCcw size={18} className={reprocessMutation.isPending ? "animate-spin" : ""} />
+                      {reprocessMutation.isPending ? 'Reprocessando...' : 'Reprocessar IA'}
+                    </button>
+                  )}
                   <button 
                     onClick={handleSave}
                     disabled={updateMutation.isPending}

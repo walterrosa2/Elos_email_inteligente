@@ -15,6 +15,10 @@ from email.header import decode_header
 import mimetypes
 
 from loguru import logger
+from app.classify.service import classification_service
+from app.contracts.manager import contract_manager
+from app.extract.service import extraction_service
+from app.validation.service import validation_service
 
 def decode_mime(text):
     if not text: return text
@@ -217,6 +221,94 @@ def update_job_extraction(
     job.extraction_result = request.extraction_result
     job.status = "VALIDATED" # Marcamos como validado após edição manual
     db.commit()
+    return job
+
+@router.post("/{job_id}/reprocess", response_model=schemas.JobResponse)
+def reprocess_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user)
+):
+    """
+    Reprocessa um documento (email/anexo), executando novamente a classificação e extração,
+    dado que ele pode ter sido categorizado como não mapeado e o gestor ajustou os contratos.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    # Somente prossegue se tiver o textract executado (idealmente, "TEXT_EXTRACTED" ou falhou classificação depois)
+    if not job.textract_result or "text" not in job.textract_result:
+        raise HTTPException(status_code=400, detail="Texto não extraído pelo Textract. Impossível reprocessar sem o OCR original.")
+
+    text = job.textract_result.get("text", "")
+    fname = job.attachment_name or ""
+    
+    # 1. Classification
+    try:
+        doc_type, confidence, reasoning = classification_service.classify_document(text, job_id=job.id, filename=fname)
+        
+        job.doc_type = doc_type
+        job.confidence = confidence
+        job.status = "CLASSIFIED"
+        job.extraction_result = None
+        job.validation_errors = None
+        
+        db.commit()
+    except Exception as e:
+        logger.error(f"Classification failed during reprocess for Job {job.id}: {e}")
+        job.status = "FAILED"
+        job.validation_errors = [str(e)]
+        db.commit()
+        return job
+
+    # 2. Extraction & Validation (if classified successfully)
+    try:
+        contract = contract_manager.get_contract(job.doc_type)
+        if not contract:
+            logger.warning(f"No contract found for type '{job.doc_type}'. Using generic fallback.")
+            from app.db.models import SystemSetting
+            from app.contracts.manager import Contract as PydanticContract
+            setting = db.query(SystemSetting).filter(SystemSetting.key == "openai_prompt_padrao").first()
+            base_prompt = setting.value if setting else "Extraia as principais informações pertinentes deste documento em formato JSON."
+            
+            contract = PydanticContract(
+                doc_type="UNKNOWN",
+                version="1.0",
+                description="Fallback Dinâmico",
+                system_prompt=base_prompt,
+                fields=[]
+            )
+            job.validation_errors = ["Contrato não encontrado. Usando extração base."]
+            job.status = "UNKNOWN_DOC_TYPE"
+
+        # Chamada ao GPT
+        data = extraction_service.extract_data(text, contract, job_id=job.id, filename=fname)
+        job.extraction_result = data
+        job.status = "EXTRACTED"
+        db.commit()
+
+        # Validação do Contrato
+        val_result = validation_service.validate(data, contract)
+        if val_result["is_valid"]:
+            job.status = "VALIDATED"
+            if job.confidence and job.confidence > 0.9 and contract.doc_type != "UNKNOWN":
+                job.status = "APPROVED"
+            else:
+                job.status = "REVIEW_PENDING"
+        else:
+            job.status = "REVIEW_PENDING"
+            job.validation_errors = val_result["errors"]
+        
+        db.commit()
+    except Exception as e:
+        logger.error(f"Extraction failed during reprocess for Job {job.id}: {e}")
+        job.status = "FAILED"
+        if not job.validation_errors:
+            job.validation_errors = []
+        job.validation_errors.append(str(e))
+        db.commit()
+
     return job
 
 @router.post("/bulk-approve", response_model=schemas.MessageResponse)
