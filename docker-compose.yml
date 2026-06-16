@@ -1,11 +1,12 @@
 services:
   app:
     build: .
-    # image: ghcr.io/walterrosa2/elos_email_inteligente:latest
     container_name: elos_app
     ports:
       - "8000:8000"
     volumes:
-      - ./dados:/app/dados
+      # Mapeamento da pasta de dados existente do OneDrive da Juliana
+      - "C:/Users/juliana.teodoro/OneDrive - ELOS/Área de Trabalho/Email_Inteligente/dados:/app/dados"
+      # Arquivo .env do cliente
       - ./.env:/app/.env
     restart: unless-stopped

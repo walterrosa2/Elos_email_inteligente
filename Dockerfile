@@ -11,6 +11,10 @@ RUN npm run build
 # Stage 2: Build Python Backend
 FROM python:3.11-slim
 
+# Redireciona repositórios do debian.org para mirror brasileiro (ftp.br.debian.org) para evitar bloqueios 403 HTTP de proxy corporativo
+RUN sed -i 's|deb.debian.org|ftp.br.debian.org|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
+RUN sed -i 's|deb.debian.org|ftp.br.debian.org|g' /etc/apt/sources.list 2>/dev/null || true
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
