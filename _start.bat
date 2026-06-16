@@ -4,8 +4,8 @@ REM  _start.bat — Inicialização da App (Windows CMD)
 REM  ELOS Pipeline V2 - Migração UI React + FastAPI
 REM ============================================================
 
-set BACKEND_PORT=8000
-set FRONTEND_PORT=5173
+set BACKEND_PORT=8020
+set FRONTEND_PORT=5177
 set VENV_DIR=.venv
 set PYTHONPATH=.
 

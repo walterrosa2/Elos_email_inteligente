@@ -21,6 +21,10 @@ class EmailContext(Base):
     
     raw_analysis_json = Column(JSON, nullable=True)
     
+    # Vencimento Inteligente (V4.0)
+    detected_due_date = Column(String, nullable=True)
+    due_date_context = Column(Text, nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -46,6 +50,19 @@ class Job(Base):
     status = Column(String, default="QUEUED", index=True) # QUEUED, STAGED, EXTRACTED, etc.
     doc_type = Column(String, nullable=True)
     confidence = Column(Float, nullable=True)
+    
+    # Routing Fields (V3.0)
+    direction_status = Column(String, default="PENDING", index=True) # PENDING, ROUTED, FAILED
+    routed_at = Column(DateTime, nullable=True)
+    routed_path = Column(String, nullable=True)
+    target_payment_date = Column(String, nullable=True)
+    
+    # Vencimento Inteligente (V4.0)
+    detected_due_date = Column(String, nullable=True)
+    due_date_source = Column(String, nullable=True)
+    due_date_context = Column(Text, nullable=True)
+    original_due_date = Column(String, nullable=True)
+    email_body_due_date = Column(String, nullable=True)
     
     # Results
     textract_result = Column(JSON, nullable=True) # or path to json

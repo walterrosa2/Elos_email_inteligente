@@ -9,6 +9,7 @@ import { Contracts } from './pages/Contracts';
 import { Settings } from './pages/Settings';
 import { Schedule } from './pages/Schedule';
 import { Reports } from './pages/Reports';
+import { Routing } from './pages/Routing';
 
 const AuthGuard = ({ children, requireAdmin }: { children: React.ReactNode, requireAdmin?: boolean }) => {
   const { user, token } = useAuthStore();
@@ -33,6 +34,7 @@ export function App() {
         <Route element={<AuthGuard><DashboardLayout /></AuthGuard>}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/analysis" element={<Analysis />} />
+          <Route path="/routing" element={<Routing />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/contracts" element={<AuthGuard requireAdmin><Contracts /></AuthGuard>} />
           <Route path="/settings" element={<AuthGuard requireAdmin><Settings /></AuthGuard>} />

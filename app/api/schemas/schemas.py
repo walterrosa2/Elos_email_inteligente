@@ -29,6 +29,8 @@ class EmailContextResponse(EmailContextBase):
     summary: Optional[str] = None
     action_required: bool = False
     raw_analysis_json: Optional[Dict[str, Any]] = None
+    detected_due_date: Optional[str] = None
+    due_date_context: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -53,6 +55,15 @@ class JobResponse(JobBase):
     storage_uri: Optional[str] = None
     extraction_result: Optional[Dict[str, Any]] = None
     validation_errors: Optional[Any] = None
+    direction_status: Optional[str] = None
+    routed_at: Optional[datetime] = None
+    routed_path: Optional[str] = None
+    target_payment_date: Optional[str] = None
+    detected_due_date: Optional[str] = None
+    due_date_source: Optional[str] = None
+    due_date_context: Optional[str] = None
+    original_due_date: Optional[str] = None
+    email_body_due_date: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -63,6 +74,9 @@ class JobUpdateExtraction(BaseModel):
 
 class JobBulkApprove(BaseModel):
     ids: List[int]
+
+class JobRouteCustomDate(BaseModel):
+    custom_payment_date: Optional[str] = None
 
 class JobStatItem(BaseModel):
     label: str
@@ -85,7 +99,28 @@ class JobSummary(BaseModel):
     confidence: Optional[float] = None
     criticality: Optional[str] = None
     extraction_result: Optional[Dict[str, Any]] = None
+    direction_status: Optional[str] = None
+    routed_at: Optional[datetime] = None
+    routed_path: Optional[str] = None
+    target_payment_date: Optional[str] = None
+    detected_due_date: Optional[str] = None
+    due_date_source: Optional[str] = None
+    due_date_context: Optional[str] = None
+    original_due_date: Optional[str] = None
+    email_body_due_date: Optional[str] = None
     
+    model_config = ConfigDict(from_attributes=True)
+
+class EmailGroupedResponse(BaseModel):
+    message_id: str
+    subject: Optional[str] = None
+    sender: Optional[str] = None
+    received_at: Optional[datetime] = None
+    criticality: Optional[str] = None
+    tone: Optional[str] = None
+    summary: Optional[str] = None
+    jobs: List[JobSummary]
+
     model_config = ConfigDict(from_attributes=True)
 
 # --- Users ---

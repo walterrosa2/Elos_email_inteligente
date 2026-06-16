@@ -57,6 +57,8 @@ Analise o corpo do e-mail e extraia as seguintes informações em formato JSON:
 2. "tom": O tom da conversa (Ex: "Formal", "Amigável", "Agressivo", "Urgente", "Nervoso").
 3. "criticidade": Nível de urgência/risco (1 a 5, onde 5 é Crítico).
 4. "acao_necessaria": true/false (Se requer ação humana imediata).
+5. "data_vencimento": A data de vencimento ou limite para pagamento mencionada expressamente no texto do e-mail (formato AAAA-MM-DD ou null se não houver).
+6. "contexto_vencimento": O trecho curto exato do corpo do e-mail onde essa data de vencimento foi mencionada (ou null/vazio se não houver).
 
 Critérios de Criticidade:
 - 5 (CRITICA): Ameaça de cancelamento, risco jurídico, prazos vencidos hoje, pagamentos atrasados bloqueando serviço.
@@ -92,6 +94,11 @@ Critérios de Criticidade:
             ctx.tone = data.get("tom", "Neutro")
             ctx.criticality_score = score_label
             ctx.action_required = data.get("acao_necessaria", False)
+            
+            # Mapeamento do Vencimento do Corpo (V4.0)
+            ctx.detected_due_date = data.get("data_vencimento")
+            ctx.due_date_context = data.get("contexto_vencimento")
+            
             ctx.analysis_date = datetime.now()
             
             self.db.commit()

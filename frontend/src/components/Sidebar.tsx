@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, Settings, LogOut, Users, Clock, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, FileText, Settings, LogOut, Users, Clock, FileSpreadsheet, FolderCheck } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 
@@ -30,6 +30,16 @@ export function Sidebar() {
           >
             <FileText size={20} className="mr-3" />
             <span className="mx-2 font-medium">Análise e Extração</span>
+          </NavLink>
+
+          <NavLink
+            to="/routing"
+            className={({ isActive }) =>
+              `flex items-center px-4 py-2 mt-5 text-gray-700 rounded-lg ${isActive ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-gray-200'}`
+            }
+          >
+            <FolderCheck size={20} className="mr-3" />
+            <span className="mx-2 font-medium">Direcionamento</span>
           </NavLink>
 
           <NavLink

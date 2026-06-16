@@ -28,6 +28,10 @@ interface JobSummary {
   received_at: string;
   doc_type: string | null;
   criticality: string | null;
+  direction_status?: string | null;
+  routed_at?: string | null;
+  routed_path?: string | null;
+  target_payment_date?: string | null;
 }
 
 interface JobDetail extends JobSummary {
@@ -46,8 +50,20 @@ interface EmailContext {
   action_required: boolean;
 }
 
+interface GroupedEmail {
+  message_id: string;
+  subject: string | null;
+  sender: string | null;
+  received_at: string | null;
+  criticality: string | null;
+  tone: string | null;
+  summary: string | null;
+  jobs: JobSummary[];
+}
+
 export function Analysis() {
   const queryClient = useQueryClient();
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'doc' | 'extraction' | 'email'>('doc');
   
@@ -65,9 +81,9 @@ export function Analysis() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [fileType, setFileType] = useState<string | null>(null);
 
-  // Fetch Jobs List
-  const { data: jobsData, isLoading: isLoadingJobs } = useQuery({
-    queryKey: ['jobs', searchTerm, statusFilter, docTypeFilter, startDate, endDate, filenameFilter, criticalityFilter],
+  // Fetch Grouped Emails List
+  const { data: emailsData, isLoading: isLoadingJobs } = useQuery<GroupedEmail[]>({
+    queryKey: ['emails-grouped', searchTerm, statusFilter, docTypeFilter, startDate, endDate, filenameFilter, criticalityFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter) params.append('status_filter', statusFilter);
@@ -77,9 +93,8 @@ export function Analysis() {
       if (searchTerm) params.append('subject', searchTerm);
       if (filenameFilter) params.append('filename', filenameFilter);
       if (criticalityFilter) params.append('criticality', criticalityFilter);
-      params.append('limit', '100');
 
-      const response = await api.get('/api/v1/jobs', { params });
+      const response = await api.get('/api/v1/jobs/grouped', { params });
       return response.data;
     }
   });
@@ -192,7 +207,27 @@ export function Analysis() {
     }
   }, [jobDetail]);
 
-  const jobs: JobSummary[] = jobsData?.items || [];
+  const emails = emailsData || [];
+  const selectedEmail = emails.find(e => e.message_id === selectedEmailId);
+
+  // Auto-selecionar o primeiro email quando carregar
+  useEffect(() => {
+    if (emails.length > 0 && !selectedEmailId) {
+      setSelectedEmailId(emails[0].message_id);
+      if (emails[0].jobs && emails[0].jobs.length > 0) {
+        setSelectedJobId(emails[0].jobs[0].id);
+      }
+    }
+  }, [emails, selectedEmailId]);
+
+  const handleSelectEmail = (email: GroupedEmail) => {
+    setSelectedEmailId(email.message_id);
+    if (email.jobs && email.jobs.length > 0) {
+      setSelectedJobId(email.jobs[0].id);
+    } else {
+      setSelectedJobId(null);
+    }
+  };
 
   const handleSave = () => {
     updateMutation.mutate(editedExtraction);
@@ -306,57 +341,74 @@ export function Analysis() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
               <p className="text-slate-400">Carregando fila...</p>
             </div>
-          ) : jobs.length === 0 ? (
+          ) : emails.length === 0 ? (
             <div className="p-8 text-center text-slate-400">
               <Mail className="mx-auto mb-4 opacity-20" size={48} />
               <p>Nenhum e-mail disponível</p>
             </div>
           ) : (
             <div className="divide-y divide-slate-50">
-              {jobs.map((job) => (
-                <div 
-                  key={job.id} 
-                  onClick={() => setSelectedJobId(job.id)}
-                  className={`p-4 cursor-pointer transition-all hover:bg-indigo-50/30 group ${
-                    selectedJobId === job.id ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-1">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                      job.simplified_status === 'Concluído' ? 'bg-emerald-100 text-emerald-700' :
-                      job.simplified_status === 'Não mapeado' ? 'bg-amber-100 text-amber-700' :
-                      job.simplified_status === 'Pendente' ? 'bg-blue-100 text-blue-700' :
-                      'bg-rose-100 text-rose-700'
-                    }`}>
-                      {job.simplified_status}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {new Date(job.received_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                    </span>
-                  </div>
-                  <h4 className={`font-semibold text-slate-800 truncate mb-1 ${selectedJobId === job.id ? 'text-indigo-900' : ''}`}>
-                    {job.subject || '(Sem Assunto)'}
-                  </h4>
-                  <p className="text-sm text-slate-500 truncate mb-1.5">{job.sender}</p>
-                  
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <div className="flex items-center gap-1 text-[11px] text-slate-400 italic bg-white px-1.5 py-0.5 border border-slate-100 rounded-md flex-1 min-w-0">
-                      <FileText size={12} className="shrink-0" />
-                      <span className="truncate">{job.attachment_name}</span>
+              {emails.map((email) => {
+                const hasPending = email.jobs.some(j => j.simplified_status === 'Pendente');
+                const hasError = email.jobs.some(j => j.simplified_status === 'Erro');
+                const hasUnmapped = email.jobs.some(j => j.simplified_status === 'Não mapeado');
+                
+                let consolidatedStatus = 'Concluído';
+                if (hasError) consolidatedStatus = 'Erro';
+                else if (hasPending) consolidatedStatus = 'Pendente';
+                else if (hasUnmapped) consolidatedStatus = 'Não mapeado';
+                
+                const isSelected = selectedEmailId === email.message_id;
+                
+                return (
+                  <div 
+                    key={email.message_id} 
+                    onClick={() => handleSelectEmail(email)}
+                    className={`p-4 cursor-pointer transition-all hover:bg-indigo-50/30 group ${
+                      isSelected ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                        consolidatedStatus === 'Concluído' ? 'bg-emerald-100 text-emerald-700' :
+                        consolidatedStatus === 'Não mapeado' ? 'bg-amber-100 text-amber-700' :
+                        consolidatedStatus === 'Pendente' ? 'bg-blue-100 text-blue-700' :
+                        'bg-rose-100 text-rose-700'
+                      }`}>
+                        {consolidatedStatus}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {email.received_at ? new Date(email.received_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : ''}
+                      </span>
                     </div>
-                    {job.criticality && (
-                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded leading-none shrink-0 ${
-                         job.criticality === 'CRITICA' ? 'bg-rose-100 text-rose-700' :
-                         job.criticality === 'ALTA' ? 'bg-orange-100 text-orange-700' :
-                         job.criticality === 'MEDIA' ? 'bg-blue-100 text-blue-700' :
-                         'bg-emerald-100 text-emerald-700'
-                       }`}>
-                         {job.criticality}
-                       </span>
-                    )}
+                    <h4 className={`font-semibold text-slate-800 truncate mb-1 ${isSelected ? 'text-indigo-900' : ''}`}>
+                      {email.subject || '(Sem Assunto)'}
+                    </h4>
+                    <p className="text-sm text-slate-500 truncate mb-1.5">{email.sender}</p>
+                    
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <div className="flex items-center gap-1 text-[11px] text-slate-400 italic bg-white px-1.5 py-0.5 border border-slate-100 rounded-md flex-1 min-w-0">
+                        <FileText size={12} className="shrink-0" />
+                        <span className="truncate">
+                          {email.jobs.length === 1 
+                            ? email.jobs[0].attachment_name 
+                            : `${email.jobs.length} anexos (${email.jobs.map(j => j.attachment_name).join(', ')})`}
+                        </span>
+                      </div>
+                      {email.criticality && (
+                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded leading-none shrink-0 ${
+                           email.criticality === 'CRITICA' ? 'bg-rose-100 text-rose-700' :
+                           email.criticality === 'ALTA' ? 'bg-orange-100 text-orange-700' :
+                           email.criticality === 'MEDIA' ? 'bg-blue-100 text-blue-700' :
+                           'bg-emerald-100 text-emerald-700'
+                         }`}>
+                           {email.criticality}
+                         </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -413,6 +465,27 @@ export function Analysis() {
                   </button>
                 </div>
               </div>
+
+              {selectedEmail && selectedEmail.jobs.length > 1 && (
+                <div className="flex gap-2 mt-4 p-2 bg-slate-50 border border-slate-200 rounded-xl overflow-x-auto">
+                  <span className="text-xs font-semibold text-slate-500 self-center ml-2">Anexos:</span>
+                  {selectedEmail.jobs.map((job) => (
+                    <button
+                      key={job.id}
+                      onClick={() => setSelectedJobId(job.id)}
+                      className={`px-3 py-1 text-xs rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
+                        selectedJobId === job.id
+                          ? 'bg-indigo-600 border-indigo-600 text-white font-semibold shadow-sm'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <FileText size={12} />
+                      <span>{job.attachment_name}</span>
+                      <span className="text-[9px] opacity-75 uppercase">({job.doc_type || 'N/A'})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Tabs */}
               <div className="flex items-center gap-6 mt-6 border-b border-slate-100">

@@ -277,12 +277,35 @@ class IMAPService:
                         payload = part.get_payload(decode=True)
                         plain_body = safe_decode(payload, part.get_content_charset())
                 
-                body = html_body if html_body else plain_body
+                if plain_body:
+                    body = plain_body
+                elif html_body:
+                    import re
+                    import html
+                    text = re.sub(r'<(head|script|style)\b[^>]*>([\s\S]*?)</\1>', '', html_body, flags=re.IGNORECASE)
+                    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+                    text = re.sub(r'</?(p|div|tr|li|h1|h2|h3|h4|h5|h6)\b[^>]*>', '\n', text, flags=re.IGNORECASE)
+                    text = re.sub(r'<[^>]+>', '', text)
+                    text = html.unescape(text)
+                    text = re.sub(r'\n\s*\n', '\n\n', text)
+                    body = text.strip()
             else:
                 # Not multipart
                 payload = email_message.get_payload(decode=True)
                 if payload:
-                    body = safe_decode(payload, email_message.get_content_charset())
+                    raw_body = safe_decode(payload, email_message.get_content_charset())
+                    if email_message.get_content_type() == "text/html":
+                        import re
+                        import html
+                        text = re.sub(r'<(head|script|style)\b[^>]*>([\s\S]*?)</\1>', '', raw_body, flags=re.IGNORECASE)
+                        text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+                        text = re.sub(r'</?(p|div|tr|li|h1|h2|h3|h4|h5|h6)\b[^>]*>', '\n', text, flags=re.IGNORECASE)
+                        text = re.sub(r'<[^>]+>', '', text)
+                        text = html.unescape(text)
+                        text = re.sub(r'\n\s*\n', '\n\n', text)
+                        body = text.strip()
+                    else:
+                        body = raw_body
         except Exception as e:
             logger.error(f"Error extracting body: {e}")
             

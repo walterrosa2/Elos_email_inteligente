@@ -154,10 +154,60 @@ class PipelineOrchestrator:
 
                 text = job.textract_result.get("text", "")
                 data = extraction_service.extract_data(text, contract, job_id=job.id, filename=job.attachment_name)
-                job.extraction_result = data
                 
+                # --- Lógica de Vencimento Inteligente (V4.0) ---
+                due_date_anexo = data.pop("_vencimento_data", None)
+                due_context_anexo = data.pop("_vencimento_trecho", None)
+                
+                # Salvar vencimento específico do anexo
+                job.original_due_date = due_date_anexo
+                job.due_date_context = due_context_anexo
+                job.extraction_result = data
                 job.status = "EXTRACTED"
                 self.db.commit()
+
+                # Garantir que o email seja analisado de imediato para termos o vencimento do corpo
+                from app.analysis.email_agent import EmailAnalysisService
+                from app.db.models import EmailContext
+                email_analyzer = EmailAnalysisService(self.db)
+                ctx = self.db.query(EmailContext).filter(EmailContext.message_id == job.message_id).first()
+                if ctx and ctx.criticality_score is None:
+                    try:
+                        email_analyzer._analyze_single_email(ctx)
+                    except Exception as e:
+                        logger.error(f"Erro ao analisar email do job {job.id} na extração: {e}")
+
+                # Salvar vencimento do corpo do email no Job para facilidade de visualização
+                if ctx:
+                    job.email_body_due_date = ctx.detected_due_date
+
+                # Decidir se tem vencimento ou não
+                has_vencimento = False
+                if due_date_anexo:
+                    has_vencimento = True
+                elif ctx and ctx.detected_due_date:
+                    has_vencimento = True
+
+                # Se não tem vencimento detectado, mover para a pasta "Sem Vencimento"
+                if not has_vencimento:
+                    try:
+                        local_path = storage.resolve_path(job.storage_uri)
+                        if local_path and local_path.exists():
+                            import shutil
+                            from pathlib import Path
+                            sem_venc_dir = local_path.parent / "Sem Vencimento"
+                            sem_venc_dir.mkdir(parents=True, exist_ok=True)
+                            new_path = sem_venc_dir / local_path.name
+                            
+                            logger.info(f"Movendo arquivo sem vencimento de {local_path} para {new_path}")
+                            shutil.move(str(local_path), str(new_path))
+                            
+                            # Atualizar storage_uri do Job para a nova localização
+                            relative_new_path = Path(job.storage_uri).parent / "Sem Vencimento" / local_path.name
+                            job.storage_uri = str(relative_new_path).replace("\\", "/")
+                            self.db.commit()
+                    except Exception as e:
+                        logger.error(f"Erro ao mover arquivo sem vencimento para quarentena no Job {job.id}: {e}")
                 
                 # Validation (Immediately follow up)
                 val_result = validation_service.validate(data, contract)

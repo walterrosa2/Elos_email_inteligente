@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from app.db.database import get_db
 from app.db.models import Job, EmailContext
@@ -51,6 +51,8 @@ def list_jobs(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     criticality: Optional[str] = None,
+    direction_status: Optional[str] = None,
+    has_due_date: Optional[bool] = None,
     current_user=Depends(get_current_active_user)
 ):
     query = db.query(Job, EmailContext.criticality_score).outerjoin(
@@ -95,7 +97,20 @@ def list_jobs(
         query = query.filter(Job.received_at <= end_of_day)
     if criticality:
         query = query.filter(EmailContext.criticality_score == criticality)
-
+    if direction_status:
+        query = query.filter(Job.direction_status == direction_status)
+    if has_due_date is not None:
+        if has_due_date:
+            query = query.filter(or_(
+                Job.original_due_date.isnot(None),
+                Job.email_body_due_date.isnot(None)
+            ))
+        else:
+            query = query.filter(
+                or_(Job.original_due_date.is_(None), Job.original_due_date == ""),
+                or_(Job.email_body_due_date.is_(None), Job.email_body_due_date == "")
+            )
+ 
     # Ordenação (Decrescente por received_at)
     query = query.order_by(desc(Job.received_at))
 
@@ -105,6 +120,39 @@ def list_jobs(
     # Modelagem para a view simplificada
     job_summaries = []
     for j, crit in jobs_data:
+        # Pular assinaturas e imagens descartaveis retroativamente (V3.1)
+        ext = ""
+        if j.attachment_name:
+            from pathlib import Path
+            ext = Path(j.attachment_name).suffix.lower()
+        is_image = ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]
+        
+        file_size_kb = 0.0
+        if is_image and j.storage_uri:
+            try:
+                from app.storage.local_adapter import storage
+                resolved_path = storage.resolve_path(j.storage_uri)
+                if resolved_path and resolved_path.exists():
+                    file_size_kb = resolved_path.stat().st_size / 1024
+            except Exception:
+                pass
+
+        stem_lower = Path(j.attachment_name).stem.lower() if j.attachment_name else ""
+        signature_keywords = ["logo", "signature", "assinatura", "avatar", "icon", "banner", "facebook", "instagram", "linkedin", "twitter", "outlook", "selo"]
+        is_signature_name = any(kw in stem_lower for kw in signature_keywords)
+        
+        is_generic_image = False
+        if stem_lower == "image" or stem_lower.startswith("image00") or stem_lower.startswith("image_"):
+            is_generic_image = True
+            
+        is_whatsapp_signature = "whatsapp" in stem_lower and not ("whatsapp image" in stem_lower or "whatsapp_image" in stem_lower or "whatsapp-image" in stem_lower)
+        
+        if is_image:
+            if file_size_kb > 0.0 and file_size_kb < 15.0:
+                continue
+            if is_signature_name or is_generic_image or is_whatsapp_signature:
+                continue
+
         if j.status in ["ERROR", "FAILED"]:
             sim_status = "Erro"
         elif j.status in ["STAGED", "TEXT_EXTRACTED", "CLASSIFYING", "EXTRACTING"]:
@@ -127,7 +175,16 @@ def list_jobs(
                 doc_type=j.doc_type,
                 confidence=j.confidence,
                 criticality=crit,
-                extraction_result=j.extraction_result
+                extraction_result=j.extraction_result,
+                direction_status=j.direction_status,
+                routed_at=j.routed_at,
+                routed_path=j.routed_path,
+                target_payment_date=j.target_payment_date,
+                detected_due_date=j.detected_due_date,
+                due_date_source=j.due_date_source,
+                due_date_context=j.due_date_context,
+                original_due_date=j.original_due_date,
+                email_body_due_date=j.email_body_due_date
             )
         )
 
@@ -137,6 +194,168 @@ def list_jobs(
         page=skip // limit + 1,
         size=limit
     )
+
+@router.get("/grouped", response_model=List[schemas.EmailGroupedResponse])
+def list_grouped_jobs(
+    db: Session = Depends(get_db),
+    status_filter: Optional[str] = None,
+    sender: Optional[str] = None,
+    subject: Optional[str] = None,
+    filename: Optional[str] = None,
+    doc_type: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    criticality: Optional[str] = None,
+    direction_status: Optional[str] = None,
+    has_due_date: Optional[bool] = None,
+    current_user=Depends(get_current_active_user)
+):
+    """Retorna a lista de e-mails de forma única, com seus jobs agrupados internamente."""
+    query = db.query(Job, EmailContext).outerjoin(
+        EmailContext, Job.message_id == EmailContext.message_id
+    )
+    
+    # Filtros Avançados
+    if status_filter:
+        if status_filter == "Concluído":
+            query = query.filter(Job.status.in_(["EXTRACTED", "VALIDATED", "COMPLETED", "APPROVED", "REVIEW_PENDING", "EXPORTED"]))
+            query = query.filter(Job.doc_type.isnot(None), Job.doc_type != "UNKNOWN", Job.doc_type != "unknown")
+        elif status_filter == "Não mapeado":
+            query = query.filter(Job.status.not_in(["STAGED", "TEXT_EXTRACTED", "CLASSIFYING", "EXTRACTING"]))
+            query = query.filter(or_(
+                Job.status == "UNKNOWN_DOC_TYPE", 
+                Job.doc_type == "UNKNOWN", 
+                Job.doc_type == "unknown",
+                Job.doc_type.is_(None)
+            ))
+        elif status_filter == "Pendente":
+            query = query.filter(Job.status.in_(["STAGED", "TEXT_EXTRACTED", "CLASSIFYING", "EXTRACTING"]))
+        elif status_filter == "Erro":
+            query = query.filter(Job.status.in_(["ERROR", "FAILED"]))
+        else:
+            query = query.filter(Job.status == status_filter)
+
+    if sender:
+        query = query.filter(Job.sender.ilike(f"%{sender}%"))
+    if subject:
+        query = query.filter(Job.subject.ilike(f"%{subject}%"))
+    if filename:
+        query = query.filter(Job.attachment_name.ilike(f"%{filename}%"))
+    if doc_type:
+        query = query.filter(Job.doc_type.ilike(f"%{doc_type}%"))
+    if start_date:
+        query = query.filter(Job.received_at >= start_date)
+    if end_date:
+        from datetime import time
+        end_of_day = datetime.combine(end_date.date(), time(23, 59, 59, 999999))
+        query = query.filter(Job.received_at <= end_of_day)
+    if criticality:
+        query = query.filter(EmailContext.criticality_score == criticality)
+    if direction_status:
+        query = query.filter(Job.direction_status == direction_status)
+    if has_due_date is not None:
+        if has_due_date:
+            query = query.filter(or_(
+                Job.original_due_date.isnot(None),
+                Job.email_body_due_date.isnot(None)
+            ))
+        else:
+            query = query.filter(
+                or_(Job.original_due_date.is_(None), Job.original_due_date == ""),
+                or_(Job.email_body_due_date.is_(None), Job.email_body_due_date == "")
+            )
+ 
+    query = query.order_by(desc(Job.received_at))
+    jobs_data = query.all()
+    
+    emails_dict = {}
+    ordered_msg_ids = []
+    
+    for j, ctx in jobs_data:
+        # Pular assinaturas e imagens descartaveis retroativamente (V3.1)
+        ext = ""
+        if j.attachment_name:
+            from pathlib import Path
+            ext = Path(j.attachment_name).suffix.lower()
+        is_image = ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]
+        
+        file_size_kb = 0.0
+        if is_image and j.storage_uri:
+            try:
+                from app.storage.local_adapter import storage
+                resolved_path = storage.resolve_path(j.storage_uri)
+                if resolved_path and resolved_path.exists():
+                    file_size_kb = resolved_path.stat().st_size / 1024
+            except Exception:
+                pass
+
+        stem_lower = Path(j.attachment_name).stem.lower() if j.attachment_name else ""
+        signature_keywords = ["logo", "signature", "assinatura", "avatar", "icon", "banner", "facebook", "instagram", "linkedin", "twitter", "outlook", "selo"]
+        is_signature_name = any(kw in stem_lower for kw in signature_keywords)
+        
+        is_generic_image = False
+        if stem_lower == "image" or stem_lower.startswith("image00") or stem_lower.startswith("image_"):
+            is_generic_image = True
+            
+        is_whatsapp_signature = "whatsapp" in stem_lower and not ("whatsapp image" in stem_lower or "whatsapp_image" in stem_lower or "whatsapp-image" in stem_lower)
+        
+        if is_image:
+            if file_size_kb > 0.0 and file_size_kb < 15.0:
+                continue
+            if is_signature_name or is_generic_image or is_whatsapp_signature:
+                continue
+
+        msg_id = j.message_id or f"temp_{j.id}"
+        
+        if j.status in ["ERROR", "FAILED"]:
+            sim_status = "Erro"
+        elif j.status in ["STAGED", "TEXT_EXTRACTED", "CLASSIFYING", "EXTRACTING"]:
+            sim_status = "Pendente"
+        elif j.status == "UNKNOWN_DOC_TYPE" or j.doc_type in ["UNKNOWN", "unknown", None]:
+            sim_status = "Não mapeado"
+        else:
+            sim_status = "Concluído"
+            
+        summary_item = schemas.JobSummary(
+            id=j.id,
+            status=j.status,
+            simplified_status=sim_status,
+            sender=decode_mime(j.sender),
+            subject=decode_mime(j.subject),
+            attachment_name=j.attachment_name,
+            received_at=j.received_at,
+            doc_type=j.doc_type,
+            confidence=j.confidence,
+            criticality=ctx.criticality_score if ctx else None,
+            extraction_result=j.extraction_result,
+            direction_status=j.direction_status,
+            routed_at=j.routed_at,
+            routed_path=j.routed_path,
+            target_payment_date=j.target_payment_date,
+            detected_due_date=j.detected_due_date,
+            due_date_source=j.due_date_source,
+            due_date_context=j.due_date_context,
+            original_due_date=j.original_due_date,
+            email_body_due_date=j.email_body_due_date
+        )
+        
+        if msg_id not in emails_dict:
+            ordered_msg_ids.append(msg_id)
+            emails_dict[msg_id] = {
+                "message_id": msg_id,
+                "subject": decode_mime(ctx.subject if ctx else j.subject),
+                "sender": decode_mime(ctx.sender if ctx else j.sender),
+                "received_at": ctx.received_at if ctx else j.received_at,
+                "criticality": ctx.criticality_score if ctx else None,
+                "tone": ctx.tone if ctx else None,
+                "summary": ctx.summary if ctx else None,
+                "jobs": []
+            }
+        
+        emails_dict[msg_id]["jobs"].append(summary_item)
+        
+    # Retornar apenas emails que possuem ao menos 1 anexo util (descartando os que so tinham assinaturas)
+    return [emails_dict[mid] for mid in ordered_msg_ids if len(emails_dict[mid]["jobs"]) > 0]
 
 @router.get("/{job_id}", response_model=schemas.JobResponse)
 def get_job_detail(job_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
@@ -148,6 +367,26 @@ def get_job_detail(job_id: int, db: Session = Depends(get_db), current_user=Depe
     job.sender = decode_mime(job.sender)
     job.subject = decode_mime(job.subject)
     return job
+
+def clean_html(html_text: str) -> str:
+    if not html_text:
+        return ""
+    if not ("<" in html_text and ">" in html_text):
+        return html_text
+    import re
+    import html
+    # Remover bloco head/style/script
+    text = re.sub(r'<(head|script|style)\b[^>]*>([\s\S]*?)</\1>', '', html_text, flags=re.IGNORECASE)
+    # Tags de quebra de linha
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</?(p|div|tr|li|h1|h2|h3|h4|h5|h6)\b[^>]*>', '\n', text, flags=re.IGNORECASE)
+    # Remover todas as outras tags HTML
+    text = re.sub(r'<[^>]+>', '', text)
+    # Decodificar entidades HTML
+    text = html.unescape(text)
+    # Colapsar novas linhas repetidas
+    text = re.sub(r'\n\s*\n', '\n\n', text)
+    return text.strip()
 
 @router.get("/{job_id}/email", response_model=schemas.EmailContextResponse)
 def get_job_email_context(job_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
@@ -166,10 +405,10 @@ def get_job_email_context(job_id: int, db: Session = Depends(get_db), current_us
              "received_at": job.received_at
          }
     
-    # Ensure fields are decoded
+    # Ensure fields are decoded and html is cleaned
     email_data = {
         "message_id": email.message_id,
-        "body_text": email.body_text,
+        "body_text": clean_html(email.body_text),
         "subject": decode_mime(email.subject or job.subject),
         "sender": decode_mime(email.sender or job.sender),
         "received_at": email.received_at,
@@ -389,3 +628,37 @@ def save_schedule_config(
     
     db.commit()
     return schemas.MessageResponse(message="Configuração de agendamento salva com sucesso.")
+
+
+
+@router.post("/{job_id}/route", response_model=schemas.JobResponse)
+def route_individual_job(
+    job_id: int,
+    request: Optional[schemas.JobRouteCustomDate] = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user)
+):
+    """Direciona um anexo individual para a pasta de pagamentos."""
+    from app.routing.service import routing_service
+    custom_date = request.custom_payment_date if request else None
+    try:
+        routing_service.route_job(job_id, db, custom_payment_date=custom_date)
+        return db.query(Job).filter(Job.id == job_id).first()
+    except Exception as e:
+        logger.error(f"Erro ao rotear job {job_id}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/emails/{message_id}/route", response_model=List[schemas.JobResponse])
+def route_grouped_email_jobs(
+    message_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user)
+):
+    """Direciona todos os anexos de um email de forma combinada."""
+    from app.routing.service import routing_service
+    try:
+        routing_service.route_email_jobs(message_id, db)
+        return db.query(Job).filter(Job.message_id == message_id).all()
+    except Exception as e:
+        logger.error(f"Erro ao rotear email {message_id}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))

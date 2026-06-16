@@ -33,6 +33,10 @@ class ExtractionService:
         Schema or instructions:
         {json.dumps(schema_desc, indent=2, ensure_ascii=False) if contract.fields else schema_desc}
         
+        Adicionalmente, você DEVE retornar no mesmo objeto JSON duas propriedades especiais de controle do sistema para identificar vencimentos de forma unificada:
+        - "_vencimento_data": A data de vencimento ou limite de pagamento mais clara encontrada no texto do documento (formato AAAA-MM-DD ou null se não houver).
+        - "_vencimento_trecho": O trecho curto exato do texto original do documento (ex: "vencimento em 15/06/2026", "pagar até dia 20 de maio") de onde você identificou esta data de vencimento.
+        
         Return the result as a strict JSON object (flat, key-value pairs only). Do not include markdown formatting like ```json.
         
         Document Text (truncated):

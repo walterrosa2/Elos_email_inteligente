@@ -134,6 +134,28 @@ class IngestionService:
                     if not payload:
                         continue
 
+                    # --- FILTER FOR SIGNATURES & INLINE LOGOS (V3.0) ---
+                    is_image = ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]
+                    file_size_kb = len(payload) / 1024
+                    stem_lower = Path(filename).stem.lower()
+                    
+                    signature_keywords = ["logo", "signature", "assinatura", "avatar", "icon", "banner", "facebook", "instagram", "linkedin", "twitter", "outlook", "selo"]
+                    is_signature_name = any(kw in stem_lower for kw in signature_keywords)
+                    
+                    is_generic_image = False
+                    if stem_lower == "image" or stem_lower.startswith("image00") or stem_lower.startswith("image_"):
+                        is_generic_image = True
+                        
+                    is_whatsapp_signature = "whatsapp" in stem_lower and not ("whatsapp image" in stem_lower or "whatsapp_image" in stem_lower or "whatsapp-image" in stem_lower)
+                    
+                    if is_image:
+                        if file_size_kb < 15.0:
+                            logger.info(f"Anexo de imagem '{filename}' detectado como assinatura/descartavel por tamanho ({file_size_kb:.1f} KB). Ignorando.")
+                            continue
+                        if is_signature_name or is_generic_image or is_whatsapp_signature:
+                            logger.info(f"Anexo de imagem '{filename}' detectado como assinatura/descartavel por nome/padrão ({file_size_kb:.1f} KB). Ignorando.")
+                            continue
+
                     # Determine Date for Storage Path
                     from datetime import datetime
                     email_date_obj = None

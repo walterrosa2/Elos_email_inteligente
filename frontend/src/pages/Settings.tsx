@@ -16,6 +16,13 @@ export function Settings() {
   const [promptIdentificacao, setPromptIdentificacao] = useState('Analyze the following document text and classify it into one of the provided Document Types.\nIf the document does not fit any of these types closely, classify as \'unknown\'.\n\nReturn a JSON object with:\n- "doc_type": The best matching document type (or "unknown").\n- "confidence": A float between 0.0 and 1.0 indicating certainty.\n- "reasoning": A brief explanation of why this type was chosen, citing specific content matches.');
   const [promptCriticidade, setPromptCriticidade] = useState('Você é um auditor sênior de comunicações corporativas.\nAnalise o corpo do e-mail e extraia as seguintes informações em formato JSON:\n\n1. "resumo": Uma frase curta resumindo a solicitação.\n2. "tom": O tom da conversa (Ex: "Formal", "Amigável", "Agressivo", "Urgente", "Nervoso").\n3. "criticidade": Nível de urgência/risco (1 a 5, onde 5 é Crítico).\n4. "acao_necessaria": true/false (Se requer ação humana imediata).\n\nCritérios de Criticidade:\n- 5 (CRITICA): Ameaça de cancelamento, risco jurídico, prazos vencidos hoje, pagamentos atrasados bloqueando serviço.\n- 4 (ALTA): Solicitação de prioridade explícita ("Urgente", "ASAP"), diretores envolvidos.\n- 3 (MEDIA): Solicitação padrão com prazo.\n- 1-2 (BAIXA): Informativos, agradecimentos, conversa de rotina.');
   const [extensions, setExtensions] = useState('.pdf, .xml, .jpeg, .jpg, .png');
+  const [serverRootPath, setServerRootPath] = useState('dados/servidor_pagamentos');
+  const [prioritizeBoleto, setPrioritizeBoleto] = useState(true);
+  const [periods, setPeriods] = useState([
+    { start_day: 1, end_day: 10, payment_day: 1, destination_folder: '' },
+    { start_day: 11, end_day: 20, payment_day: 10, destination_folder: '' },
+    { start_day: 21, end_day: 31, payment_day: 20, destination_folder: '' }
+  ]);
 
   const { data: settings = [], isLoading } = useQuery<SystemSetting[]>({
     queryKey: ['settings'],
@@ -40,6 +47,19 @@ export function Settings() {
       if (extInfo && Array.isArray(extInfo.value)) {
         setExtensions(extInfo.value.join(', '));
       }
+
+      const routingInfo = settings.find(s => s.key === 'payment_routing_settings');
+      if (routingInfo && routingInfo.value) {
+        const val = typeof routingInfo.value === 'string' ? JSON.parse(routingInfo.value) : routingInfo.value;
+        if (val.server_root_path) setServerRootPath(val.server_root_path);
+        if (val.prioritize_boleto !== undefined) setPrioritizeBoleto(val.prioritize_boleto);
+        if (val.periods) {
+          setPeriods(val.periods.map((p: any) => ({
+            ...p,
+            destination_folder: p.destination_folder || ''
+          })));
+        }
+      }
     }
   }, [settings]);
 
@@ -58,11 +78,26 @@ export function Settings() {
 
   const handleSaveAll = () => {
     const extsArray = extensions.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    const routingSettings = {
+      server_root_path: serverRootPath,
+      prioritize_boleto: prioritizeBoleto,
+      periods: periods,
+      rules_by_doc_type: {
+        "Boleto": "data_vencimento",
+        "NFe_Produto": "emissao",
+        "NFSe": "emissao",
+        "NFSe_Nacional": "emissao",
+        "Fatura_Comercial": "data_vencimento",
+        "Duplicata": "data_vencimento"
+      }
+    };
+    
     saveMutation.mutate([
       { key: 'openai_prompt_padrao', value: prompt, description: 'Prompt genérico de extração, atuando como fallback caso um tipo não tenha prompt específico.' },
       { key: 'openai_prompt_identificacao', value: promptIdentificacao, description: 'Prompt que orienta como a IA deve analisar o texto e eleger o tipo do documento.' },
       { key: 'openai_prompt_criticidade', value: promptCriticidade, description: 'Prompt que audita os e-mails, definindo o tom e criticidade antes da triagem.' },
-      { key: 'allowed_extensions', value: extsArray, description: 'Extensões permitidas na ingestão via e-mails.' }
+      { key: 'allowed_extensions', value: extsArray, description: 'Extensões permitidas na ingestão via e-mails.' },
+      { key: 'payment_routing_settings', value: routingSettings, description: 'Configuracoes de Roteamento de Pagamentos (V3.0)' }
     ]);
   }
 
@@ -146,6 +181,108 @@ export function Settings() {
              className="w-full border border-slate-300 rounded-xl px-5 py-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium text-slate-700 shadow-sm"
              placeholder="ex: .pdf, .xml, .jpeg"
           />
+        </div>
+
+        <div className="p-6 border-b border-slate-200 bg-indigo-50/10">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <SettingsIcon className="text-indigo-600" size={20} />
+            [Roteamento] Períodos e Regras de Pagamento (V3.0)
+          </h2>
+          <p className="text-sm text-slate-500 mt-1 mb-6">
+            Configure as faixas de vencimento do mês que agrupam os pagamentos para os dias 01, 10 ou 20 no servidor.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Caminho Raiz no Servidor de Arquivos</label>
+              <input 
+                type="text"
+                value={serverRootPath}
+                onChange={(e) => setServerRootPath(e.target.value)}
+                className="w-full border border-slate-300 rounded-xl px-5 py-3.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium text-slate-700 shadow-sm"
+                placeholder="Ex: S:/Financeiro/Pagamentos"
+              />
+            </div>
+
+            <div className="flex items-center md:pt-6">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input 
+                  type="checkbox"
+                  checked={prioritizeBoleto}
+                  onChange={(e) => setPrioritizeBoleto(e.target.checked)}
+                  className="h-4.5 w-4.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm font-semibold text-slate-700">Priorizar Boleto sobre a Nota Fiscal se ambos estiverem no mesmo e-mail</span>
+              </label>
+            </div>
+          </div>
+
+          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-4">Intervalos Mensais de Vencimento e Dias de Pagamento</label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {periods.map((period, index) => (
+              <div key={index} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                <span className="text-xs font-bold text-indigo-600">Período {index + 1}</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Dia Início</label>
+                    <input 
+                      type="number"
+                      min={1} max={31}
+                      value={period.start_day}
+                      onChange={(e) => {
+                        const newPeriods = [...periods];
+                        newPeriods[index].start_day = parseInt(e.target.value) || 1;
+                        setPeriods(newPeriods);
+                      }}
+                      className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Dia Fim</label>
+                    <input 
+                      type="number"
+                      min={1} max={31}
+                      value={period.end_day}
+                      onChange={(e) => {
+                        const newPeriods = [...periods];
+                        newPeriods[index].end_day = parseInt(e.target.value) || 31;
+                        setPeriods(newPeriods);
+                      }}
+                      className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Dia de Destino para Pagamento</label>
+                  <input 
+                    type="number"
+                    min={1} max={31}
+                    value={period.payment_day}
+                    onChange={(e) => {
+                      const newPeriods = [...periods];
+                      newPeriods[index].payment_day = parseInt(e.target.value) || 1;
+                      setPeriods(newPeriods);
+                    }}
+                    className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none mb-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Pasta Destino (ex: 2026-06/Dia_01)</label>
+                  <input 
+                    type="text"
+                    value={period.destination_folder || ''}
+                    onChange={(e) => {
+                      const newPeriods = [...periods];
+                      newPeriods[index].destination_folder = e.target.value;
+                      setPeriods(newPeriods);
+                    }}
+                    placeholder="Deixe vazio para o padrão"
+                    className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium text-slate-700 placeholder-slate-300"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="p-6 bg-slate-50 flex justify-end">

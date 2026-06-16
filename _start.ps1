@@ -5,8 +5,8 @@
 
 $ErrorActionPreference = "Continue"
 
-$BACKEND_PORT = 8000
-$FRONTEND_PORT = 5173
+$BACKEND_PORT = 8020
+$FRONTEND_PORT = 5177
 $VENV_DIR     = ".venv"
 $PYTHON_PATH  = "."
 
